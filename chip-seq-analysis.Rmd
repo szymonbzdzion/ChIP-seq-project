@@ -1,0 +1,407 @@
+---
+title: "ChIP-seq"
+author: "Szymon Bzdzion"
+date: "2023-05-03"
+output: html_document
+---
+
+# ChiP-seq analysis of public available data from GEO
+
+GEO accesion number: GSE149324
+
+### Title: Chromatin states in glioblastoma stem cells (HOXA-AS2 depletion)
+
+**Summary**: Glioblastoma multiform account for about half of all gliomas and are the most deadly and aggressive forms. Its therapeutic resistance and tumor relapse rely on a subpopulation of cells, the so-called Glioma-stem Cells (GSCs). Here, we investigated for the role of the long non-coding RNA HOXA-AS2 in GSC biology by conducting descriptive and functional analyses of glioma samples classified according to their isocitrate dehydrogenase (IDH1) gene mutation status, and of glioma stem cells. We found that HOXA-AS2 is overexpressed only in aggressive (IDHwt) glioma and GSC. Sh-RNA-based depletion of HOXA-AS2 affects GSC both at the cellular and molecular levels with a decrease in proliferation and altered expression of several hundreds of their genes. Integrative analysis revealed that these changes is expression are not associated to changes in DNA methylation or chromatin signature at the promoter of most deregulated genes following HOXA-AS2 silencing in GSC, supporting a post-transcriptional regulation. In addition, transcription factor motif enrichment and correlation analyses sustained that HOXA-AS2 affect, directly or indirectly, expression of key transcription factors of GCS biology, including E2F8, E2F1, STAT1 and ATF3 to, in fine, contributes to their pathological status by promoting proliferation and modulating the inflammation pathway of Glioma Stem Cell.
+
+
+## Get the data 
+
+I downloaded fastq files from SRA using `fasterq-dump` tool
+
+```{bash eval=FALSE}
+fasterq-dump --split-files SRR18425899
+fasterq-dump --split-files SRR18425900
+fasterq-dump --split-files SRR18425901
+fasterq-dump --split-files SRR18425902
+```
+
+
+## QC and trimming
+
+Then I checked the quality of the sequences with `fastqc`
+
+
+```{bash eval=FALSE}
+mkdir fastqc
+fastqc *.fastq -o ./fastqc
+```
+
+
+Quality was overall good but there were adapters in all sequences so I performed trimming using `trimmomatic`
+
+```{bash eval=FALSE}
+trimmomatic PE SRR18425899_1.fastq SRR18425899_2.fastq \
+SRR18425899_1_trim.fq SRR18425899_un.fq \
+SRR18425899_2_trim.fq SRR18425899_un.fq \
+ILLUMINACLIP:truseq_adapters.fa:2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:95
+
+
+trimmomatic PE SRR18425900_1.fastq SRR18425900_2.fastq \
+SRR18425900_1_trim.fq SRR18425900_un.fq \
+SRR18425900_2_trim.fq SRR18425900_un.fq \
+ILLUMINACLIP:truseq_adapters.fa:2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:95
+
+trimmomatic PE SRR18425901_1.fastq SRR18425901_2.fastq \
+SRR18425901_1_trim.fq SRR18425901_un.fq \
+SRR18425901_2_trim.fq SRR18425901_un.fq \
+ILLUMINACLIP:truseq_adapters.fa:2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:95
+
+trimmomatic PE SRR18425902_1.fastq SRR18425902_2.fastq \
+SRR18425902_1_trim.fq SRR18425902_un.fq \
+SRR18425902_2_trim.fq SRR18425902_un.fq \
+ILLUMINACLIP:truseq_adapters.fa:2:30:10 LEADING:3 TRAILING:3 SLIDINGWINDOW:4:15 MINLEN:95
+
+```
+
+
+
+Then I examined the quality again
+
+```{bash eval=FALSE}
+mkdir trim
+mv *_[0-9]_trim.fq ./trim
+cd ./trim
+mkdir fastqc
+fastqc *.fq
+mkdir index
+```
+
+
+Adapter sequences were trimmed and quality was good\
+
+
+## Alignment
+
+Next step was alignment using `bowtie2`. First I created the index, then I performed alignment for every file
+
+```{bash eval=FALSE}
+bowtie2-build GRCh38.p13.genome.fa.gz ./index/HS_index
+```
+
+
+
+```{bash eval=FALSE}
+bowtie2 -p 4 -x ./index/HS_index -1 SRR18425899_1_trim.fq -2 SRR18425899_2_trim.fq \
+-S SRR18425899.sam
+
+
+bowtie2 -p 4 -x ./index/HS_index -1 SRR18425900_1_trim.fq -2 SRR18425900_2_trim.fq \
+-S SRR18425900.sam
+
+
+bowtie2 -p 4 -x ./index/HS_index -1 SRR18425901_1_trim.fq -2 SRR18425901_2_trim.fq \
+-S SRR18425901.sam
+
+bowtie2 -p 4 -x ./index/HS_index -1 SRR18425902_1_trim.fq -2 SRR18425902_2_trim.fq \
+-S SRR18425902.sam
+
+```
+
+
+
+Then I used `samtools` to create bam files from sam files
+
+
+```{bash eval=FALSE}
+samtools view -S -b SRR18425899.sam > SRR18425899.bam
+samtools view -S -b SRR18425900.sam > SRR18425900.bam
+samtools view -S -b SRR18425901.sam > SRR18425901.bam
+samtools view -S -b SRR18425902.sam > SRR18425902.bam
+```
+
+
+I sorted the bam files and created indecies for every file and created bigWig files to visualize them in IGV
+
+
+```{bash eval=FALSE}
+samtools sort -o SRR18425899_sorted.bam SRR18425899.bam
+samtools sort -o SRR18425900_sorted.bam SRR18425900.bam
+samtools sort -o SRR18425901_sorted.bam SRR18425901.bam
+samtools sort -o SRR18425901_sorted.bam SRR18425901.bam
+
+samtools index SRR18425899_sorted.bam
+samtools index SRR18425900_sorted.bam
+samtools index SRR18425901_sorted.bam
+samtools index SRR18425902_sorted.bam
+
+bamCoverage -b SRR18425899_sorted.bam --normalizeUsing RPKM --binSize 30 --smoothLength 300 -p 10 --extendReads 200 -o SRR18425899.bw
+bamCoverage -b SRR18425900_sorted.bam --normalizeUsing RPKM --binSize 30 --smoothLength 300 -p 10 --extendReads 200 -o SRR18425900.bw
+bamCoverage -b SRR18425901_sorted.bam --normalizeUsing RPKM --binSize 30 --smoothLength 300 -p 10 --extendReads 200 -o SRR18425901.bw
+bamCoverage -b SRR18425902_sorted.bam --normalizeUsing RPKM --binSize 30 --smoothLength 300 -p 10 --extendReads 200 -o SRR18425902.bw
+
+
+```
+
+```{r echo=FALSE}
+knitr::include_graphics('chip_igv.png')
+```
+
+
+Visualization revealed issue with SRR18425899.bw file (chip antibody: H3K27me3) - there was a lot of background noise. That indicates some problems with library preparation or sequencing. Noisy background of the file resulted later in calling only 4 peaks.\
+I decided to discard this file from further analysis.
+
+
+
+## Peak calling
+
+I used `macs2` for peak calling
+
+```{bash eval=FALSE}
+
+macs2 callpeak -t ./bam/SRR18425900_sorted.bam \
+-c ./bam/SRR18425902_sorted.bam \
+-f BAM -g hs -n SRR18425899 \
+--outdir peaks
+
+macs2 callpeak -t ./bam/SRR18425899_sorted.bam \
+-c ./bam/SRR18425902_sorted.bam \
+-f BAM -g hs -n SRR18425899 \
+--outdir peaks
+
+
+
+```
+
+
+
+Then I checked how many peaks are located in the blacklisted regions
+
+```{bash eval=FALSE}
+gunzip ENCFF356LFX.bed.gz
+
+bedtools intersect -a SRR18425900_peaks.narrowPeak -b ENCFF356LFX.bed -wa | wc -l
+bedtools intersect -a SRR18425901_peaks.narrowPeak -b ENCFF356LFX.bed -wa | wc -l
+```
+
+
+and I removed them from the files
+
+```{bash eval=FALSE}
+bedtools intersect -a SRR18425900_peaks.narrowPeak -b ENCFF356LFX.bed -v > SRR18425900_filtered.bed
+bedtools intersect -a SRR18425901_peaks.narrowPeak -b ENCFF356LFX.bed -v > SRR18425901_filtered.bed
+```
+
+
+I also checked how many peaks overlap between two files
+
+```{bash eval=FALSE}
+bedtools intersect -a SRR18425900_peaks.narrowPeak -b SRR18425901_peaks.narrowPeak -wa | wc -l
+bedtools intersect -a SRR18425901_peaks.narrowPeak -b SRR18425900_peaks.narrowPeak -wa | wc -l
+
+```
+
+
+
+## Analysis in R
+
+Loading the libraries
+
+```{r message=FALSE, warning=FALSE}
+library(ChIPseeker)
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+library(clusterProfiler)
+library(rtracklayer)
+```
+
+
+
+Loading the data and filtering so only regions mapped to the sequences on chromosomes are analyzed
+
+```{r}
+setwd("E:/Studia/Coding/Project/CHIP-seq/trimmed/trim/peaks")
+
+H3K4me3_peaks <- readPeakFile('SRR18425900_peaks_filtered.bed')
+
+
+H3K27ac_peaks <- readPeakFile('SRR18425901_peaks_filtered.bed')
+
+
+
+
+H3K4me3_peaks_filter <-  H3K4me3_peaks[grep('^chr', seqnames(H3K4me3_peaks))]
+
+H3K4me3_peaks_filter
+
+H3K27ac_peaks_filter <- H3K27ac_peaks[grep('^chr', seqnames(H3K27ac_peaks))]
+H3K27ac_peaks_filter
+```
+
+
+Coverage plot
+
+```{r fig.height=10, fig.width=8, message=FALSE, warning=FALSE}
+covplot(H3K4me3_peaks_filter, weightCol = 'V5')
+```
+
+```{r fig.height=10, fig.width=8, message=FALSE, warning=FALSE}
+covplot(H3K27ac_peaks_filter, weightCol = 'V5')
+```
+
+
+
+```{r fig.height=10, fig.width=5, warning=FALSE}
+promoter <- getPromoters(TxDb = TxDb.Hsapiens.UCSC.hg38.knownGene, upstream = 3000, downstream = 3000)
+promoter
+
+tag_matrix <- getTagMatrix(H3K4me3_peaks_filter, windows = promoter)
+
+tagHeatmap(tag_matrix, xlim = c(-3000, 3000))
+```
+
+
+```{r warning=FALSE}
+plotAvgProf(tagMatrix = tag_matrix, xlim = c(-3000, 3000))
+
+plotPeakProf2(peak = H3K4me3_peaks, upstream = rel(0.2), downstream = rel(0.2),
+              conf = 0.95, by = "gene", type = "body", nbin = 800,
+              TxDb = TxDb.Hsapiens.UCSC.hg38.knownGene, weightCol = "V5",ignore_strand = F)
+```
+
+## Peak annotation
+
+```{r warning=FALSE}
+peak_anno <- annotatePeak(H3K4me3_peaks_filter, tssRegion = c(-3000, 3000), TxDb = TxDb.Hsapiens.UCSC.hg38.knownGene,
+                          annoDb = 'org.Hs.eg.db')
+plotAnnoBar(peak_anno)
+
+upsetplot(peak_anno)
+vennpie(peak_anno)
+
+plotDistToTSS(peak_anno)
+```
+
+## Enrichment analysis
+
+```{r fig.height=8, warning=FALSE}
+library(ReactomePA)
+
+pathway_1 <- enrichPathway(as.data.frame(peak_anno)$geneId)
+head(pathway_1,2)
+
+
+gene <- seq2gene(H3K4me3_peaks_filter, tssRegion = c(-1000, 1000), flankDistance = 3000, 
+                 TxDb = TxDb.Hsapiens.UCSC.hg38.knownGene)
+pathway_2 <- enrichPathway(gene)
+head(pathway_2, 2)
+
+dotplot(pathway_2)
+```
+
+## H3k27ac 
+
+```{r fig.height=8, message=FALSE, warning=FALSE}
+H3K27ac_peaks_filter
+
+tag_matrix_27 <- getTagMatrix(H3K27ac_peaks_filter, windows = promoter)
+tagHeatmap(tag_matrix_27, xlim = c(-3000, 3000))
+
+
+plotAvgProf(tag_matrix_27, xlim = c(-3000, 3000))
+```
+
+### Peak annotation
+
+```{r message=FALSE, warning=FALSE}
+peak_anno_27 <- annotatePeak(H3K27ac_peaks_filter, tssRegion = c(-3000, 3000), TxDb = TxDb.Hsapiens.UCSC.hg38.knownGene,
+                             annoDb = 'org.Hs.eg.db')
+plotAnnoBar(peak_anno_27)
+upsetplot(peak_anno_27)
+plotDistToTSS(peak_anno_27)
+```
+
+
+### Enrichment
+
+```{r message=FALSE, warning=FALSE}
+pathway_3 <- enrichPathway(as.data.frame(peak_anno_27)$geneId)
+dotplot(pathway_3)
+
+
+gene_27 <- seq2gene(H3K27ac_peaks_filter, tssRegion = c(-1000, 1000), flankDistance = 3000,
+                    TxDb = TxDb.Hsapiens.UCSC.hg38.knownGene)
+pathway_4 <- enrichPathway(gene_27)
+dotplot(pathway_4)
+
+```
+
+
+
+## Comperative analysis of both data sets
+
+```{r fig.height=8, message=FALSE, warning=FALSE}
+files_list <- list(H3k27ac = H3K27ac_peaks_filter, H3k4me3 = H3K4me3_peaks_filter)
+tag_matrix_list <- lapply(files_list, getTagMatrix, windows=promoter)
+
+
+plotAvgProf(tag_matrix_list, xlim = c(-3000, 3000))
+
+plotAvgProf(tag_matrix_list, xlim = c(-3000, 3000), conf = 0.95, resample=500, facet='row')
+
+tagHeatmap(tag_matrix_list, xlim = c(-3000, 3000))
+
+```
+
+### Peak annotation
+
+```{r message=FALSE, warning=FALSE}
+peak_anno_list <- lapply(files_list, annotatePeak, TxDb=TxDb.Hsapiens.UCSC.hg38.knownGene,
+                         tssRegion=c(-3000, 3000))
+
+plotAnnoBar(peak_anno_list)
+plotDistToTSS(peak_anno_list)
+```
+
+
+### Enrichment - comparing enriched pathways
+
+```{r fig.height=10}
+genes <- lapply(peak_anno_list, function(x) { as.data.frame(x)$geneId})
+names(genes)
+
+compKEGG <- compareCluster(geneClusters = genes,
+                           fun = 'enrichKEGG',
+                           pvalueCutoff = 0.05,
+                           pAdjustMethod = 'BH')
+
+dotplot(compKEGG, showCategory=15)
+```
+
+```{r fig.height=10}
+universe_genes <- genes(TxDb.Hsapiens.UCSC.hg38.knownGene)
+
+compGO <- compareCluster(geneClusters = genes,
+                         fun = 'enrichGO',
+                         pvalueCutoff = 0.05,
+                         pAdjustMethod = 'BH',
+                         OrgDb = org.Hs.eg.db,
+                         universe=universe_genes,
+                         ont = 'BP')
+dotplot(compGO, showCategory=10)
+```
+
+
+```{r}
+library(enrichplot)
+Go_results_plot <- pairwise_termsim(compGO)
+emapplot(Go_results_plot, showCategory=10)
+
+library(msigdbr)
+msig_t2g <- msigdbr(species = 'Homo sapiens', category = 'C5', subcategory = NULL)
+msig_t2g <- msig_t2g %>%
+  select(gs_name, entrez_gene)
+msig_t2g
+
+hallmark <- enricher(genes[1], universe = universe_genes, TERM2GENE = msig_t2g)
+
+```
+
